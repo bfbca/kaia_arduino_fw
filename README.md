@@ -1,2 +1,2 @@
-# kaia-arduino-fw
-Kaia.ai firmware
+# Kaia.ai Arduino firmware
+Kaia.ai Arduino ESP32 firmware
