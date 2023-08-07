@@ -8,9 +8,13 @@ float absMin(float a, float b_abs) {
 }
 
 void enableMotor(bool enable) {
-  digitalWrite(YD_MOTOR_EN_PIN, enable ? HIGH : LOW);
-  Serial.print(F("Motor "));
-  Serial.println(enable ? F("enabled") : F("disabled"));
+  int current_state = digitalRead(YD_MOTOR_EN_PIN);
+  int new_state = enable ? HIGH : LOW;
+  if (current_state != new_state) {
+    digitalWrite(YD_MOTOR_EN_PIN, new_state);
+    Serial.print(F("Motor "));
+    Serial.println(enable ? F("enabled") : F("disabled"));
+  }
 }
 
 void blink(unsigned int delay_ms, unsigned int count) {

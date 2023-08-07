@@ -1,6 +1,8 @@
-// Scan publishes
+// Scan publishes, WiFi AP works
 
 /*
+https://randomnerdtutorials.com/esp32-wi-fi-manager-asyncwebserver/
+
 sudo apt install ros-humble-geometry2
 ros2 topic list
 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist
@@ -27,10 +29,10 @@ docker run -it --rm --name uros-arduino-lib
   --env MICROROS_LIBRARY_FOLDER=extras
   microros/micro_ros_static_library_builder:humble -p esp32
 
-docker run --name kaia-ros-desktop -it --rm
+docker run --name kaia-ros-dev-humble -it --rm
    -p 8888:8888/udp -e DISPLAY=host.docker.internal:0.0
-  -e LIBGL_ALWAYS_INDIRECT=0 kaia-ros:humble:desktop
-docker exec -it kaia-ros-desktop bash
+  -e LIBGL_ALWAYS_INDIRECT=0 kaia-ros-dev:humble    # launch
+docker exec -it kaia-ros-dev-humble bash
 
 mkdir -p /ros_ws/src && cd /ros_ws/src
 git clone https://github.com/kaiaai/kaia_msgs
@@ -41,16 +43,13 @@ colcon build
 . install/setup.bash
 ros2 run kaia_telem test_pub
 ros2 run kaia_telem telem
-
-https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries
-  /Writing-A-Simple-Cpp-Publisher-And-Subscriber.html
 */
 
 #include "kaia-esp32.h"
 #include "util.h"
 #include <WiFi.h>
 #include <stdio.h>
-#include <micro_ros_arduino.h>
+#include <micro_ros_arduino_kaia.h>
 #include "mod.h"
 #include <HardwareSerial.h>
 #include "YDLidar.h"
@@ -65,11 +64,7 @@ https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries
 #include <rcl_interfaces/msg/log.h>
 #include <rmw_microros/rmw_microros.h>
 #include "drive.h"
-
-#define WIFI_SSID "NETGEAR48" // "Verizon-SM-G930V-D876"
-#define WIFI_PASSWORD "royaloctopus516" // "uovd752!"
-#define MICRO_ROS_AGENT_PORT 8888
-#define MICRO_ROS_AGENT_IP "192.168.1.112" // "192.168.226.157"
+#include "ap.h"
 
 #define RCCHECK(fn,E) { rcl_ret_t temp_rc = fn; \
   if((temp_rc != RCL_RET_OK)){error_loop((E));}}
@@ -249,6 +244,8 @@ void logInfo(char* msg) {
 void setup() {
   Serial.begin(115200);
 
+  initSPIFFS();
+
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);  
 
@@ -256,7 +253,12 @@ void setup() {
   pinMode(YD_MOTOR_EN_PIN, OUTPUT);
   enableMotor(false);
 
-  initWiFi((char*)WIFI_SSID, (char*)WIFI_PASSWORD);
+  //initWiFi((char*)WIFI_SSID, (char*)WIFI_PASSWORD);
+  if (!initWiFi(getSSID(), getPassw())) {
+    ObtainWiFiCreds();
+    return;
+  }
+
   set_microros_wifi_transports_mod(NULL, NULL, (char*)MICRO_ROS_AGENT_IP,
     MICRO_ROS_AGENT_PORT);
 
@@ -320,13 +322,38 @@ static inline void initRos() {
   resetTelemMsg();
 }
 
-static inline void initWiFi(char* ssid, char* passw) {
+//static inline bool initWiFi(char* ssid, char* passw) {
+static inline bool initWiFi(String ssid, String passw) {
 
+  if(ssid.length() == 0){
+    Serial.println("Undefined SSID");
+    return false;
+  }
+
+  WiFi.mode(WIFI_STA);
+  //localIP.fromString(ip.c_str());
+  //localGateway.fromString(gateway.c_str());
+
+  //if (!WiFi.config(localIP, localGateway, subnet)){
+  //  Serial.println("STA Failed to configure");
+  //  return false;
+  //}
+
+  //WiFi.begin(ssid.c_str(), pass.c_str());
   WiFi.begin(ssid, passw);
 
-  Serial.print("Wait for WiFi ");  
+  Serial.print("Connecting to WiFi ");
+  Serial.print(ssid);
+  Serial.print(" ");
+
+  unsigned long startMillis = millis();
 
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - startMillis >= WIFI_CONN_TIMEOUT_MS) {
+      Serial.println(" timed out");
+      return false;
+    }
+
     digitalWrite(LED_PIN, HIGH);
     delay(250);
     digitalWrite(LED_PIN, LOW);
@@ -341,8 +368,10 @@ static inline void initWiFi(char* ssid, char* passw) {
     Serial.println(WiFi.localIP());
   } else {
     Serial.println("failed");
-    error_loop(ERR_WIFI_CONN);
+    // error_loop(ERR_WIFI_CONN);
+    return false;
   }
+  return true;
 }
 
 int i_println=0;
@@ -501,6 +530,13 @@ void spinPing() {
 }
 
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    enableMotor(false);
+    drive.setRPM(MOTOR_RIGHT, ramp_target_rpm_right);
+    drive.setRPM(MOTOR_LEFT, ramp_target_rpm_left);
+    return;
+  }
+
   spinLDS();
   spinTelem(false);
   spinPing();

@@ -10,6 +10,8 @@
 #define YD_MOTOR_SCTP_PWM_CHANNEL 0  // ESP32 PWM channel
 
 // Micro-ROS config
+#define MICRO_ROS_AGENT_PORT 8888
+#define MICRO_ROS_AGENT_IP "192.168.1.112" // "192.168.226.157"
 #define UROS_CLIENT_KEY 0xCA1A0000
 #define UROS_TELEM_TOPIC_NAME "telemetry"
 #define UROS_LOG_TOPIC_NAME "rosout"
@@ -17,6 +19,9 @@
 #define UROS_NODE_NAME "kaia_esp32_arduino_microros"
 #define JOINTS_LEN (MOTOR_COUNT)
 #define LDS_BUF_LEN 400
+
+// WiFi config
+#define WIFI_CONN_TIMEOUT_MS 10000
 
 // Motors config
 #define WHEEL_DIA (2*33.5e-3) // meters
