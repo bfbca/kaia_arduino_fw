@@ -1,6 +1,9 @@
 // Scan publishes, WiFi AP works
 
 /*
+TODO check agent connection rclc_executor_spin_some() != RCL_RET_OK
+  call esp_wifi_disconnect() before reset/reboot
+
 https://randomnerdtutorials.com/esp32-wi-fi-manager-asyncwebserver/
 
 sudo apt install ros-humble-geometry2
@@ -9,7 +12,6 @@ ros2 topic pub /cmd_vel geometry_msgs/msg/Twist
   "{linear: {x: 0.1, y: 0.0, z: 0.0},
   angular: {x: 0.0, y: 0.0, z: 1.0}}" -1
 
-TODO call esp_wifi_disconnect() before reset/reboot
 cmd_vel in ESP32 vs per-motor speed from PC ROS diff_controller
   because ESP32 needs to know direction of movement to stop
   if LDS detects an obstacle in that direction
@@ -44,13 +46,13 @@ colcon build
 ros2 run kaia_telem test_pub
 ros2 run kaia_telem telem
 */
+//#define RMW_UXRCE_TRANSPORT_UDP
 
 #include "kaia-esp32.h"
 #include "util.h"
 #include <WiFi.h>
 #include <stdio.h>
-#include <micro_ros_arduino_kaia.h>
-#include "mod.h"
+#include <micro_ros_kaia.h>
 #include <HardwareSerial.h>
 #include "YDLidar.h"
 //#include <sys/time.h>
@@ -63,6 +65,7 @@ ros2 run kaia_telem telem
 #include <geometry_msgs/msg/twist.h>
 #include <rcl_interfaces/msg/log.h>
 #include <rmw_microros/rmw_microros.h>
+//#include <rmw_microros/discovery.h>
 #include "drive.h"
 #include "ap.h"
 
@@ -259,8 +262,9 @@ void setup() {
     return;
   }
 
-  set_microros_wifi_transports_mod(NULL, NULL, (char*)MICRO_ROS_AGENT_IP,
-    MICRO_ROS_AGENT_PORT);
+  set_microros_wifi_transports((char*)MICRO_ROS_AGENT_IP, MICRO_ROS_AGENT_PORT);
+//  set_microros_wifi_transports_mod(NULL, NULL, (char*)MICRO_ROS_AGENT_IP,
+//    MICRO_ROS_AGENT_PORT);
 
   delay(2000);
 
@@ -279,13 +283,24 @@ void setup() {
 static inline void initRos() {
   allocator = rcl_get_default_allocator();
 
-  rcl_init_options_t init_options;
-  init_options = rcl_get_zero_initialized_init_options();
-
+  rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
   RCCHECK(rcl_init_options_init(&init_options, allocator), ERR_UROS_INIT);
 
-  rmw_init_options_t* rmw_options;
-  rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
+  rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
+
+  // https://github.com/micro-ROS/micro-ROS-demos/blob/iron/rclc/autodiscover_agent/main.c
+  // https://micro.ros.org/blog/2020/09/30/discovery/
+  // https://micro.ros.org/docs/api/rmw/
+  // https://github.com/micro-ROS/rmw_microxrcedds/blob/iron/rmw_microxrcedds_c/include/rmw_microros/discovery.h
+  // https://github.com/micro-ROS/rmw_microxrcedds/blob/iron/rmw_microxrcedds_c/src/rmw_microros/discovery.c
+  // Auto discover micro-ROS agent
+  // RMW_UXRCE_TRANSPORT=custom
+  // RMW_UXRCE_TRANSPORT_UDP
+  //Serial.print("micro-ROS agent ");
+  //if (rmw_uros_discover_agent(rmw_options) == RCL_RET_OK) {
+  //  Serial.println("not ");
+  //}
+  //Serial.print("found");
 
   RCCHECK(rmw_uros_options_set_client_key(UROS_CLIENT_KEY, rmw_options),
     ERR_UROS_INIT); // TODO multiple bots
@@ -357,20 +372,14 @@ static inline bool initWiFi(String ssid, String passw) {
     digitalWrite(LED_PIN, HIGH);
     delay(250);
     digitalWrite(LED_PIN, LOW);
-    Serial.print('.'); // F('.') crashes code!!
+    Serial.print('.'); // Don't use F('.'), it crashes code!!
     delay(250);
   }
 
   digitalWrite(LED_PIN, LOW);
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F(" connected"));
-    Serial.print(F("IP "));
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("failed");
-    // error_loop(ERR_WIFI_CONN);
-    return false;
-  }
+  Serial.println(F(" connected"));
+  Serial.print(F("IP "));
+  Serial.println(WiFi.localIP());
   return true;
 }
 
